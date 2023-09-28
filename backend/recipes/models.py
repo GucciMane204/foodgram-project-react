@@ -45,7 +45,9 @@ class Tag(Model):
 class Ingredient(Model):
     """Модель ингридиента."""
 
-    name = CharField(verbose_name="Название", max_length=settings.MAX_LENGTH_NAME)
+    name = CharField(
+        verbose_name="Название", max_length=settings.MAX_LENGTH_NAME
+    )
     measurement_unit = CharField(
         verbose_name="Единица измерения", max_length=settings.MAX_LENGTH_NAME
     )
@@ -81,7 +83,9 @@ class Recipe(Model):
         verbose_name="Ингредиенты",
         through="RecipeIngredients",
     )
-    image = ImageField(verbose_name="Изображение рецепта", upload_to="recipes/")
+    image = ImageField(
+        verbose_name="Изображение рецепта", upload_to="recipes/"
+    )
     name = CharField(
         verbose_name="Название рецепта", max_length=settings.MAX_LENGTH_NAME
     )
@@ -137,7 +141,9 @@ class RecipeIngredients(Model):
     amount = PositiveIntegerField(
         verbose_name="Количество ингредиентов",
         validators=[
-            MinValueValidator(1, message="Минимальное количество ингридиентов 1!")
+            MinValueValidator(
+                1, message="Минимальное количество ингридиентов 1!"
+            )
         ],
     )
 
@@ -173,7 +179,9 @@ class BaseInteractionModel(Model):
     class Meta:
         abstract = True
         constraints = [
-            UniqueConstraint(fields=["user", "recipe"], name="unique_interaction")
+            UniqueConstraint(
+                fields=["user", "recipe"], name="unique_interaction"
+            )
         ]
 
     def __str__(self):
