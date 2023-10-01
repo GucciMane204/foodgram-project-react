@@ -186,7 +186,7 @@ def user_authentication_required(func):
             return False
         return func(self, obj, request.user)
 
-        return wrapper
+    return wrapper
 
 
 class RecipeSerializer(ModelSerializer):
