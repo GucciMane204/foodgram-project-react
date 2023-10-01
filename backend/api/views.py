@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
@@ -15,9 +13,9 @@ from api.permissions import IsAdminOrReadOnly, IsAuthorOrReadOnly
 from api.serializers import (IngredientSerializer, RecipeCreateSerializer,
                              RecipeListSerializer, RecipeSerializer,
                              SubscriptionSerializer, TagSerializer)
-from recipes.models import (Favorite, Ingredient, Recipe, RecipeIngredients,
+from recipes.models import (Favorite, Ingredient, Recipe,
                             ShoppingCart, Tag)
-from users.models import Subscription, User
+from users.models import User
 
 
 class CustomPageNumberPagination(PageNumberPagination):
@@ -61,29 +59,6 @@ class CustomUserViewSet(UserViewSet):
         или отписаться от другого пользователя.
         """
         author = get_object_or_404(User, id=id)
-        subscription = (
-            Subscription.objects.filter(user=request.user, author=author)
-        )
-        if request.method == "DELETE":
-            if not subscription:
-                return Response(
-                    {"errors": "Подписка уже удалена."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            subscription.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-
-        if subscription:
-            return Response(
-                {"errors": "Вы уже подписаны на этого автора."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if author == request.user:
-            return Response(
-                {"errors": "Вы не можете подписаться на самого себя."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        Subscription.objects.create(user=request.user, author=author)
         serializer = SubscriptionSerializer(
             author,
             context={
@@ -92,7 +67,14 @@ class CustomUserViewSet(UserViewSet):
                 "view": self,
             },
         )
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        if request.method == "DELETE":
+            serializer.unsubscribe(author)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        return Response(
+            serializer.subscribe(author), status=status.HTTP_201_CREATED
+        )
 
 
 class TagViewSet(ReadOnlyModelViewSet):
@@ -154,38 +136,14 @@ class RecipeViewSet(ModelViewSet):
             permission_classes=[IsAuthenticated])
     def download_shopping_cart(self, request):
         """Выгружаем список продуктов из корзины (формат txt)."""
-        ingredients = (
-            RecipeIngredients.objects.filter(
-                recipe__shoppingcart__user=request.user
-            )
-            .values(
-                "ingredient__name", "ingredient__measurement_unit", "amount"
-            )
-            .order_by("ingredient__name")
+        shopping_list = (
+            self.get_queryset().first().get_shopping_cart(request.user)
         )
-        shopping_list = self.create_ingredient_list(ingredients)
         response = HttpResponse(shopping_list, content_type="text/plain")
         response["Content-Disposition"] = "attachment; filename={0}".format(
             "Список_покупок.txt"
         )
         return response
-
-    def create_ingredient_list(self, queryset) -> list:
-        """Создание списка продуктов по рецептам из корзины."""
-        ingredient_data = defaultdict(int)
-        for ingredient in queryset:
-            ingredient_name = ingredient["ingredient__name"]
-            measurement_unit = ingredient["ingredient__measurement_unit"]
-            amount = ingredient["amount"]
-            key = f"{ingredient_name} ({measurement_unit})"
-            ingredient_data[key] += amount
-
-        ingredient_list = []
-        ingredient_list.append("Список продуктов: \n")
-        for ingredient, amount in ingredient_data.items():
-            ingredient_list.append(f"{ingredient} - {amount} \n")
-
-        return ingredient_list
 
     def manage_recipe_user(self, request, pk, model, action):
         """Функция для создания/удаления связи между

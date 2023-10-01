@@ -7,7 +7,7 @@ from rest_framework.serializers import (ModelSerializer,
                                         SerializerMethodField,
                                         StringRelatedField, ValidationError)
 from recipes.models import Ingredient, Recipe, RecipeIngredients, Tag
-from users.models import User
+from users.models import Subscription, User
 
 
 class CustomUserCreateSerializer(UserCreateSerializer):
@@ -79,6 +79,43 @@ class SubscriptionSerializer(CustomUserSerializer):
             "recipes_count",
         )
 
+    def validate_subscription(self, author):
+        request = self.context["request"]
+
+        subscription = Subscription.objects.filter(
+            user=request.user, author=author
+        )
+        if request.method == "DELETE" and not subscription.exists():
+            raise ValidationError("Подписка уже удалена.")
+
+        if author == request.user:
+            raise ValidationError("Вы не можете подписаться на самого себя.")
+
+    def subscribe(self, author):
+        """Метод для создания подписки."""
+        request = self.context["request"]
+        self.validate_subscription(author)
+
+        Subscription.objects.create(user=request.user, author=author)
+        serializer = SubscriptionSerializer(
+            author,
+            context={
+                "request": request,
+                "format": self.format_kwarg,
+                "view": self,
+            },
+        )
+        return serializer.data
+
+    def unsubscribe(self, author):
+        """Метод для удаления подписки."""
+        request = self.context["request"]
+        subscription = Subscription.objects.filter(
+            user=request.user, author=author
+        )
+        if subscription.exists():
+            subscription.delete()
+
     def get_recipes(self, obj):
         """Возвращает список рецептов в подписке."""
         recipes_limit = self.context["request"].GET.get("recipes_limit")
@@ -142,6 +179,16 @@ class RecipeListSerializer(ModelSerializer):
         read_only_fields = ("__all__",)
 
 
+def user_authentication_required(func):
+    def wrapper(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return False
+        return func(self, obj, request.user)
+
+        return wrapper
+
+
 class RecipeSerializer(ModelSerializer):
     """Сериализатор рецепта."""
 
@@ -173,15 +220,6 @@ class RecipeSerializer(ModelSerializer):
             "text",
             "cooking_time",
         )
-
-    def user_authentication_required(func):
-        def wrapper(self, obj):
-            request = self.context.get("request")
-            if not request or request.user.is_anonymous:
-                return False
-            return func(self, obj, request.user)
-
-        return wrapper
 
     @user_authentication_required
     def get_is_favorited(self, obj, user):
